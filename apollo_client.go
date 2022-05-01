@@ -57,8 +57,13 @@ func (c *ApolloClient) SetConf(conf ApolloConfig) {
 	c.Conf = conf
 	// set token header
 	c.restyClient.SetHeader("Authorization", c.Conf.Token)
-	c.restyClient.SetRetryCount(int(conf.RetryCount))
-	c.restyClient.SetTimeout(time.Duration(conf.Timeout) * time.Second)
+
+	if c.Conf.Timeout > 0 {
+		c.restyClient.SetRetryCount(int(conf.RetryCount))
+	}
+	if conf.Timeout > 0 {
+		c.restyClient.SetTimeout(time.Duration(conf.Timeout) * time.Second)
+	}
 	c.restyClient.SetBaseURL(conf.Host)
 }
 
