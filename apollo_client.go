@@ -3,7 +3,6 @@ package apollo_client
 import (
 	"fmt"
 	"github.com/go-resty/resty/v2"
-	"github.com/viney-shih/go-lock"
 	"go.uber.org/zap"
 	"sync"
 	"time"
@@ -33,7 +32,9 @@ type ApolloClient struct {
 	autoSyncLock sync.Locker
 	// use 3rd party lock, with try-lock function, to avoid blocking other goroutine
 	// it only a temporary solution, we will use go-lock package after go 1.18 version
-	syncLock   lock.Mutex
+	// syncLock   lock.Mutex
+	// use blocking lock instead of try-lock
+	syncLock   sync.Locker
 	isAutoSync bool
 	done       chan struct{}
 }
@@ -47,7 +48,8 @@ func NewApolloClient(conf ApolloConfig, creator string) (*ApolloClient, error) {
 		autoSyncLock: &sync.Mutex{},
 		// use 3rd party lock, with try-lock function, to avoid blocking other goroutine
 		// usage: https://pkg.go.dev/github.com/viney-shih/go-lock#section-documentation
-		syncLock: lock.NewChanMutex(),
+		// syncLock: lock.NewChanMutex(),
+		syncLock: &sync.Mutex{},
 	}
 	client.SetConf(conf)
 	apiClient := NewApolloApiClient(client.restyClient, creator)
@@ -104,9 +106,13 @@ func (c *ApolloClient) GetCache() *ApolloCache {
 // SyncFromRemote this will sync the cache from remote
 func (c *ApolloClient) SyncFromRemote() error {
 	// if you can't get lock, return error
-	if !c.syncLock.TryLock() {
-		return fmt.Errorf("can't get lock, another sync is running")
-	}
+	//if !c.syncLock.TryLock() {
+	//	return fmt.Errorf("can't get lock, another sync is running")
+	//}
+	//defer c.syncLock.Unlock()
+
+	// use blocking lock instead of try-lock
+	c.syncLock.Lock()
 	defer c.syncLock.Unlock()
 
 	api := c.apiClient
@@ -123,9 +129,13 @@ func (c *ApolloClient) SyncFromRemote() error {
 // Sync this will sync local cache to remote
 func (c *ApolloClient) Sync() error {
 	// if you can't get lock, return error
-	if !c.syncLock.TryLock() {
-		return fmt.Errorf("can't get lock, another sync is running")
-	}
+	//if !c.syncLock.TryLock() {
+	//	return fmt.Errorf("can't get lock, another sync is running")
+	//}
+	//defer c.syncLock.Unlock()
+
+	// use blocking lock instead of try-lock
+	c.syncLock.Lock()
 	defer c.syncLock.Unlock()
 
 	remoteValues := make(map[string]string)
