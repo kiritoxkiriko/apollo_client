@@ -3,6 +3,7 @@ package apollo_client
 import (
 	"fmt"
 	"github.com/go-resty/resty/v2"
+	"github.com/viney-shih/go-lock"
 	"go.uber.org/zap"
 	"sync"
 	"time"
@@ -25,22 +26,28 @@ type ApolloConfig struct {
 
 // ApolloClient an apollo client sync local to remote
 type ApolloClient struct {
-	Conf        ApolloConfig
-	restyClient *resty.Client
-	apiClient   *ApolloApiClient
-	cache       *ApolloCache
-	lock        *sync.Mutex
-	isAutoSync  bool
-	done        chan struct{}
+	Conf         ApolloConfig
+	restyClient  *resty.Client
+	apiClient    *ApolloApiClient
+	cache        *ApolloCache
+	autoSyncLock sync.Locker
+	// use 3rd party lock, with try-lock function, to avoid blocking other goroutine
+	// it only a temporary solution, we will use go-lock package after go 1.18 version
+	syncLock   lock.Mutex
+	isAutoSync bool
+	done       chan struct{}
 }
 
 // NewApolloClient create a apollo client
 func NewApolloClient(conf ApolloConfig, creator string) (*ApolloClient, error) {
 	client := &ApolloClient{
-		Conf:        ApolloConfig{},
-		restyClient: resty.New(),
-		cache:       NewApolloCache(),
-		lock:        &sync.Mutex{},
+		Conf:         ApolloConfig{},
+		restyClient:  resty.New(),
+		cache:        NewApolloCache(),
+		autoSyncLock: &sync.Mutex{},
+		// use 3rd party lock, with try-lock function, to avoid blocking other goroutine
+		// usage: https://pkg.go.dev/github.com/viney-shih/go-lock#section-documentation
+		syncLock: lock.NewChanMutex(),
 	}
 	client.SetConf(conf)
 	apiClient := NewApolloApiClient(client.restyClient, creator)
@@ -96,6 +103,12 @@ func (c *ApolloClient) GetCache() *ApolloCache {
 
 // SyncFromRemote this will sync the cache from remote
 func (c *ApolloClient) SyncFromRemote() error {
+	// if you can't get lock, return error
+	if !c.syncLock.TryLock() {
+		return fmt.Errorf("can't get lock, another sync is running")
+	}
+	defer c.syncLock.Unlock()
+
 	api := c.apiClient
 	info, err := api.GetReleasedConf(c.Conf.Env, c.Conf.AppId, c.Conf.Cluster, c.Conf.NameSpace)
 	if err != nil {
@@ -109,9 +122,14 @@ func (c *ApolloClient) SyncFromRemote() error {
 
 // Sync this will sync local cache to remote
 func (c *ApolloClient) Sync() error {
-	api := c.apiClient
+	// if you can't get lock, return error
+	if !c.syncLock.TryLock() {
+		return fmt.Errorf("can't get lock, another sync is running")
+	}
+	defer c.syncLock.Unlock()
+
 	remoteValues := make(map[string]string)
-	info, err := api.GetReleasedConf(c.Conf.Env, c.Conf.AppId, c.Conf.Cluster, c.Conf.NameSpace)
+	info, err := c.apiClient.GetReleasedConf(c.Conf.Env, c.Conf.AppId, c.Conf.Cluster, c.Conf.NameSpace)
 	if err != nil {
 		return fmt.Errorf("get namespace info error: %v", err)
 	}
@@ -119,6 +137,7 @@ func (c *ApolloClient) Sync() error {
 		remoteValues[k] = fmt.Sprintf("%v", v)
 	}
 
+	api := c.apiClient
 	// operations count, if count is 0, means no need to update
 	opsCount := 0
 	var returnErr error
@@ -172,8 +191,8 @@ func (c *ApolloClient) Sync() error {
 
 // AutoSync this will start auto sync, call AutoSync function every interval
 func (c *ApolloClient) AutoSync(duration time.Duration) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.autoSyncLock.Lock()
+	defer c.autoSyncLock.Unlock()
 	if c.isAutoSync {
 		return fmt.Errorf("auto sync is already running")
 	}
@@ -203,8 +222,8 @@ func (c *ApolloClient) AutoSync(duration time.Duration) error {
 
 // StopAutoSync this will stop auto sync
 func (c *ApolloClient) StopAutoSync() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.autoSyncLock.Lock()
+	defer c.autoSyncLock.Unlock()
 	if c.isAutoSync {
 		close(c.done)
 		c.isAutoSync = false

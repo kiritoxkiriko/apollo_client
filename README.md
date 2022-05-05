@@ -5,6 +5,4 @@ inspired by [agollo](https://github.com/apolloconfig/agollo)
 
 ## example
 
-```go
-
-```
+see example.go
