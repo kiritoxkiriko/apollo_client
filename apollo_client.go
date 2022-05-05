@@ -34,6 +34,7 @@ type ApolloClient struct {
 	done        chan struct{}
 }
 
+// NewApolloClient create a apollo client
 func NewApolloClient(conf ApolloConfig, creator string) (*ApolloClient, error) {
 	client := &ApolloClient{
 		Conf:        ApolloConfig{},
@@ -53,6 +54,7 @@ func NewApolloClient(conf ApolloConfig, creator string) (*ApolloClient, error) {
 	return client, nil
 }
 
+// SetConf set apollo config
 func (c *ApolloClient) SetConf(conf ApolloConfig) {
 	c.Conf = conf
 	// set token header
@@ -67,22 +69,27 @@ func (c *ApolloClient) SetConf(conf ApolloConfig) {
 	c.restyClient.SetBaseURL(conf.Host)
 }
 
+// SetKey set key value to cache
 func (c *ApolloClient) SetKey(key, value string) {
 	c.cache.Set(key, value)
 }
 
+// GetKey get key value from cache
 func (c *ApolloClient) GetKey(key string) (string, bool) {
 	return c.cache.Get(key)
 }
 
+// UpdateKey update key value to cache
 func (c *ApolloClient) UpdateKey(key, value string) {
 	c.cache.Set(key, value)
 }
 
+// DeleteKey delete key from cache
 func (c *ApolloClient) DeleteKey(key string) {
 	c.cache.Delete(key)
 }
 
+// GetCache GetKeys get local cache
 func (c *ApolloClient) GetCache() *ApolloCache {
 	return c.cache
 }
