@@ -1,4 +1,4 @@
-module github.com/kiritoxkiriko/apollo-client
+module github.com/kiritoxkiriko/apollo_client
 
 go 1.16
 
