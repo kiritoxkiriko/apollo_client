@@ -1,8 +1,6 @@
-module apollo_client
+module github.com/kiritoxkiriko/apollo-client
 
 go 1.16
-
-//replace github.com/kiritoxkiriko/apollo-client => ./apollo-client
 
 require (
 	github.com/go-resty/resty/v2 v2.7.0
